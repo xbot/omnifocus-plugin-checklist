@@ -1,0 +1,130 @@
+/*{
+    "type": "action",
+    "targets": ["omnifocus"],
+    "author": "Donie",
+    "identifier": "org.0x3f.checklist",
+    "version": "1.0",
+    "description": "Handle checklist issues with OmniFocus.",
+    "label": "Create a checklist",
+    "shortLabel": "Create a checklist",
+    "paletteLabel": "Create a checklist",
+    "image": "checklist"
+}*/
+(() => {
+    let preferences = new Preferences();
+
+    const FIELD_TEMPLATE = "Template";
+
+    const PREF_CHECKLIST_TEMPLATE_FOLDER = "checklist_templates_folder";
+    const PREF_MRU_TEMPLATE              = "mru_template";
+
+    function prompt_preferences_dialog() {
+        let templateFolderID = preferences.readString(PREF_CHECKLIST_TEMPLATE_FOLDER);
+
+        let menuItems = flattenedFolders.map((folder) => {
+            let label = folder.name;
+
+            while (folder.parent !== null) {
+                label = folder.parent.name + " > " + label;
+                folder = folder.parent;
+            }
+
+            return label;
+        });
+        let menuKeys = flattenedFolders.map((folder) => {
+            return folder.id.primaryKey;
+        });
+        let menu = new Form.Field.Option(
+            PREF_CHECKLIST_TEMPLATE_FOLDER,
+            "Templates folder",
+            menuKeys,
+            menuItems,
+            templateFolderID
+        )
+
+        let preferenceForm = new Form();
+
+        preferenceForm.addField(menu);
+
+        preferenceForm.validate = function (formObject) { return true; };
+
+        let formPromise = preferenceForm.show("Checklist", "Save");
+
+        formPromise.then((formObject) => {
+            let templateFolderID = formObject.values[PREF_CHECKLIST_TEMPLATE_FOLDER];
+
+            if (templateFolderID) {
+                preferences.write(PREF_CHECKLIST_TEMPLATE_FOLDER, templateFolderID.trim());
+            }
+        });
+    }
+
+    function is_preference_action(sender) {
+        return (app.platformName === "macOS" && app.controlKeyDown) || (app.platformName === 'iOS' && sender instanceof MenuItem);
+    }
+
+    var action = new PlugIn.Action(function (selection, sender) {
+        try {
+            if (is_preference_action(sender)) {
+                prompt_preferences_dialog();
+            } else {
+                const templateFolderID = preferences.readString(PREF_CHECKLIST_TEMPLATE_FOLDER);
+
+                if (templateFolderID === null) {
+                    throw { name: "Emmm...", message: "Checklist template folder must be set in the preferences. (Click the action with CTRL key)" };
+                }
+
+                let templateFolder = Folder.byIdentifier(templateFolderID);
+
+                if (templateFolder.projects.length === 0) {
+                    throw { name: "Emmm...", message: "No checklist templates found!" };
+                }
+
+                let menuKeys     = templateFolder.projects.map((project) => { return project.id.primaryKey });
+                let menuItems    = templateFolder.projects.map((project) => { return project.name });
+                let templateMenu = new Form.Field.Option(FIELD_TEMPLATE, null, menuKeys, menuItems, preferences.readString(PREF_MRU_TEMPLATE));
+
+                let form = new Form();
+                form.addField(templateMenu);
+                form.validate = function (formObject) { return true; };
+
+                let formTitle   = "Choose a template";
+                let buttonLabel = "Create";
+                let formPromise = form.show(formTitle, buttonLabel);
+
+                formPromise.then((formObject) => {
+                    let templateID = formObject.values[FIELD_TEMPLATE];
+
+                    let template = Project.byIdentifier(templateID);
+
+                    if (template === null) {
+                        throw { name: "Invalid Template", message: "Invalid template selected.", };
+                    }
+
+                    // Create the checklist under all chosen projects
+                    selection.projects.forEach((targetProject) => {
+                        var rootTask = new Task(template.name, targetProject);
+
+                        rootTask.completedByChildren = template.completedByChildren;
+                        rootTask.note                = template.note;
+                        rootTask.sequential          = template.sequential;
+
+                        duplicateTasks(template.tasks, rootTask);
+
+                        rootTask.addTags(template.tags);
+                    });
+
+                    preferences.write(PREF_MRU_TEMPLATE, templateID);
+                });
+            }
+        } catch (err) {
+            new Alert(err.name, err.message).show();
+        }
+    });
+
+    action.validate = function (selection, sender) {
+        return is_preference_action(sender) || selection.projects.length > 0;
+    };
+
+    return action;
+})();
