@@ -9,7 +9,24 @@ Make OmniFocus as a checklist App.
 - Create a checklist in a single or multiple projects by selecting a pre-built template.
 - Notes, Parallel and 'Complete with last action' properties and tags from the template are preserved while creating a checklist.
 
-## Usage
+## Quick Start Guide
+
+### Installation
+
+Clone the repo and link it in the Automation Configuration dialog in OmniFocus, or add it as a git submodule to the default plugin folder of OmniFocus. I recommend the latter for an easier synchronization with other devices.
+
+```shell
+cd ~/Library/Mobile Documents/iCloud~com~omnigroup~OmniFocus/Documents/Plug-Ins
+
+git init
+
+git submodule add https://github.com/xbot/omnifocus-plugin-checklist.git checklist
+
+# For updating:
+git submodule update --remote --recursive
+```
+
+### Usage
 
 - Create a folder for checklist templates.
 - Create as many projects as you want under that folder, each project is considered as a checklist template.
