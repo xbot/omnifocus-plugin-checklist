@@ -3,7 +3,7 @@
     "targets": ["omnifocus"],
     "author": "Donie",
     "identifier": "org.0x3f.checklist",
-    "version": "1.0",
+    "version": "2.0",
     "description": "Handle checklist issues with OmniFocus.",
     "label": "Create a checklist",
     "shortLabel": "Create a checklist",
@@ -11,94 +11,95 @@
     "image": "checklist"
 }*/
 (() => {
-    let preferences = new Preferences();
+    const preferences = new Preferences();
 
-    const FIELD_TEMPLATE = "Template";
+    const devPlugin = PlugIn.find('org.0x3f.libdev');
 
-    const PREF_CHECKLIST_TEMPLATE_FOLDER = "checklist_templates_folder";
-    const PREF_MRU_TEMPLATE              = "mru_template";
+    if (devPlugin === null) {
+        throw new Error('Dev library plugin not installed.');
+    }
+
+    const libdev = devPlugin.library('libdev');
+
+    // Preference keys
+    const PREF_CHECKLIST_TEMPLATE_FOLDER = 'checklist_templates_folder';
+    const PREF_MRU_TEMPLATE              = 'mru_template';
+
+    // Runtime dialog fields
+    const FIELD_TEMPLATE = 'template';
 
     function prompt_preferences_dialog() {
-        let templateFolderID = preferences.readString(PREF_CHECKLIST_TEMPLATE_FOLDER);
-
-        let menuItems = flattenedFolders.map((folder) => {
+        const folderIds   = flattenedFolders.map(folder => folder.id.primaryKey);
+        const folderNames = flattenedFolders.map((folder) => {
             let label = folder.name;
 
             while (folder.parent !== null) {
-                label = folder.parent.name + " > " + label;
+                label = folder.parent.name + ' > ' + label;
                 folder = folder.parent;
             }
 
             return label;
         });
-        let menuKeys = flattenedFolders.map((folder) => {
-            return folder.id.primaryKey;
-        });
-        let menu = new Form.Field.Option(
+
+        const templateFolderID = libdev.getString(preferences, PREF_CHECKLIST_TEMPLATE_FOLDER);
+
+        const templateFolderOption = new Form.Field.Option(
             PREF_CHECKLIST_TEMPLATE_FOLDER,
-            "Templates folder",
-            menuKeys,
-            menuItems,
+            'Templates folder',
+            folderIds,
+            folderNames,
             templateFolderID
         )
 
-        let preferenceForm = new Form();
+        const preferenceForm = new Form();
 
-        preferenceForm.addField(menu);
+        preferenceForm.addField(templateFolderOption);
 
         preferenceForm.validate = function (formObject) { return true; };
 
-        let formPromise = preferenceForm.show("Checklist", "Save");
+        const formPromise = preferenceForm.show('Checklist', 'Save');
 
         formPromise.then((formObject) => {
-            let templateFolderID = formObject.values[PREF_CHECKLIST_TEMPLATE_FOLDER];
-
-            if (templateFolderID) {
-                preferences.write(PREF_CHECKLIST_TEMPLATE_FOLDER, templateFolderID.trim());
-            }
+            libdev.setString(preferences, PREF_CHECKLIST_TEMPLATE_FOLDER, formObject);
         });
-    }
-
-    function is_preference_action(sender) {
-        return (app.platformName === "macOS" && app.controlKeyDown) || (app.platformName === 'iOS' && sender instanceof MenuItem);
     }
 
     var action = new PlugIn.Action(function (selection, sender) {
         try {
-            if (is_preference_action(sender)) {
+            if (libdev.isPreferenceAction(sender)) {
                 prompt_preferences_dialog();
             } else {
-                const templateFolderID = preferences.readString(PREF_CHECKLIST_TEMPLATE_FOLDER);
+                const templateFolderID = libdev.getString(preferences, PREF_CHECKLIST_TEMPLATE_FOLDER);
 
                 if (templateFolderID === null) {
-                    throw { name: "Emmm...", message: "Checklist template folder must be set in the preferences. (Click the action with CTRL key)" };
+                    throw { name: 'Emmm...', message: 'Checklist template folder must be set in the preferences. (Click the action with CTRL key)' };
                 }
 
-                let templateFolder = Folder.byIdentifier(templateFolderID);
+                const templateFolder = Folder.byIdentifier(templateFolderID);
 
                 if (templateFolder.projects.length === 0) {
-                    throw { name: "Emmm...", message: "No checklist templates found!" };
+                    throw { name: 'Emmm...', message: 'No checklist templates found!' };
                 }
 
-                let menuKeys     = templateFolder.projects.map((project) => { return project.id.primaryKey });
-                let menuItems    = templateFolder.projects.map((project) => { return project.name });
-                let templateMenu = new Form.Field.Option(FIELD_TEMPLATE, null, menuKeys, menuItems, preferences.readString(PREF_MRU_TEMPLATE));
+                const projectIds   = templateFolder.projects.map(project => project.id.primaryKey);
+                const projectNames = templateFolder.projects.map(project => project.name);
+                const templateMenu = new Form.Field.Option(FIELD_TEMPLATE, null, projectIds, projectNames, preferences.readString(PREF_MRU_TEMPLATE));
 
-                let form = new Form();
+                const form = new Form();
+
                 form.addField(templateMenu);
+
                 form.validate = function (formObject) { return true; };
 
-                let formTitle   = "Choose a template";
-                let buttonLabel = "Create";
-                let formPromise = form.show(formTitle, buttonLabel);
+                const formPromise = form.show('Choose a template', 'Create');
 
                 formPromise.then((formObject) => {
-                    let templateID = formObject.values[FIELD_TEMPLATE];
+                    const templateID = formObject.values[FIELD_TEMPLATE];
 
-                    let template = Project.byIdentifier(templateID);
+                    const template = Project.byIdentifier(templateID);
 
                     if (template === null) {
-                        throw { name: "Invalid Template", message: "Invalid template selected.", };
+                        throw { name: 'Invalid Template', message: 'Invalid template selected.', };
                     }
 
                     // Create the checklist under all chosen projects
@@ -123,7 +124,7 @@
     });
 
     action.validate = function (selection, sender) {
-        return is_preference_action(sender) || selection.projects.length > 0;
+        return libdev.isPreferenceAction(sender) || selection.projects.length > 0;
     };
 
     return action;
